@@ -39,7 +39,7 @@ def frange(v0: float, vf: float, dv: float) -> tp.Sequence[float]:
     # For internal use - never mind parameter validation.
     v = v0
     if vf > v0:
-        while v < vf:
+        while v <= vf:
             yield v
             v += dv
     else:
@@ -52,13 +52,14 @@ class FoilMaker:
     def __init__(self, foil: NACAFoil) -> None:
         self._foil = foil
 
-    def gen_coordinates(self) -> tp.Sequence[Coord]:
-        num_steps = 10
+    def gen_env_coordinates(self) -> tp.Sequence[Coord]:
+        num_steps = 20
         dx = 1.0 / num_steps
         # Generate upper surface from 0.0 to 1.0
-        for x in frange(0.0, 1.0, dx):
+        xvals = list(frange(0.0, 1.0, dx))
+        for x in xvals:
             yield self.upper_surface(x)
-        for x in frange(x, 0.0, -dx):
+        for x in reversed(xvals):
             yield self.lower_surface(x)
 
     def yc(self, x: float) -> float:
@@ -68,9 +69,11 @@ class FoilMaker:
         p_sqr = p * p
         if 0.0 <= x < p:
             return (m / p_sqr) * (2.0 * p * x - x ** 2)
-        if p <= x < 1.0:
-            return (m / (1.0 - p) ** 2) * (1.0 - 2.0 * p * x - x ** 2)
-        raise ValueError(f"x must be in 0.0 ..< 1.0")
+        if p <= x <= 1.0:
+            return (m / (1.0 - p) ** 2) * (
+                1.0 - 2.0 * p + 2.0 * p * x - x ** 2
+            )
+        raise ValueError(f"x must be in 0.0 ... 1.0")
 
     def dyc_dx(self, x: float) -> float:
         foil = self._foil
@@ -79,9 +82,9 @@ class FoilMaker:
         p_sqr = p * p
         if 0.0 <= x < p:
             return (2.0 * m / p_sqr) * (p - x)
-        if p <= x < 1.0:
+        if p <= x <= 1.0:
             return (2.0 * m / (1.0 - p) ** 2) * (p - x)
-        raise ValueError(f"x must be in 0.0 ..< 1.0")
+        raise ValueError(f"x must be in 0.0 ... 1.0")
 
     def half_thickness(self, x: float) -> float:
         t = self._foil.thickness
@@ -97,25 +100,44 @@ class FoilMaker:
         dyc_dx = self.dyc_dx(x)
         theta = math.atan(dyc_dx)
         yt = self.half_thickness(x)
+        yc = self.yc(x)
         xu = x - yt * math.sin(theta)
-        yu = self.yc(x) + yt * math.cos(theta)
+        yu = yc + yt * math.cos(theta)
         return Coord(x=xu, y=yu)
 
     def lower_surface(self, x: float) -> Coord:
         dyc_dx = self.dyc_dx(x)
         theta = math.atan(dyc_dx)
         yt = self.half_thickness(x)
+        yc = self.yc(x)
         xl = x + yt * math.sin(theta)
-        yl = self.yc(x) - yt * math.cos(theta)
+        yl = yc - yt * math.cos(theta)
         return Coord(x=xl, y=yl)
+
+    def gen_camber_coords(self) -> tp.Sequence[Coord]:
+        num_steps = 20
+        dx = 1.0 / num_steps
+        # Generate upper surface from 0.0 to 1.0
+        xvals = list(frange(0.0, 1.0, dx))
+        for x in xvals:
+            y = self.yc(x)
+            yield Coord(x=x, y=y)
 
 
 def main() -> None:
     """Mainline for standalone execution."""
     spec = parse_id("NACA2412")
+    print(
+        f"Max camber {spec.max_camber} occurs at {spec.camber_pos}.  Thickness is {spec.thickness}."
+    )
     maker = FoilMaker(spec)
-    for point in maker.gen_coordinates():
-        print(f"{point.x}, {point.y}")
+    print("# Envelope")
+    for point in maker.gen_env_coordinates():
+        print(f"{point.x:.4f}, {point.y:.4f}")
+    print("")
+    print("# Camber line")
+    for point in maker.gen_camber_coords():
+        print(f"{point.x:.4f}, {point.y:.4f}")
 
 
 if __name__ == "__main__":

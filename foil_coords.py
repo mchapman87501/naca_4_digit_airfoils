@@ -35,17 +35,13 @@ class Coord:
     y: float
 
 
-def frange(v0: float, vf: float, dv: float) -> tp.Sequence[float]:
-    # For internal use - never mind parameter validation.
-    v = v0
-    if vf > v0:
-        while v <= vf:
-            yield v
-            v += dv
-    else:
-        while v >= vf:
-            yield v
-            v += dv
+def gen_xvals(num_steps: int) -> tp.Sequence[float]:
+    # Reduce flat segments near leading edge:
+    beta = 0.0
+    d_beta = math.pi / num_steps
+    while beta <= math.pi:
+        yield (1.0 - math.cos(beta)) / 2.0
+        beta += d_beta
 
 
 class FoilMaker:
@@ -54,9 +50,8 @@ class FoilMaker:
 
     def gen_env_coordinates(self) -> tp.Sequence[Coord]:
         num_steps = 20
-        dx = 1.0 / num_steps
         # Generate upper surface from 0.0 to 1.0
-        xvals = list(frange(0.0, 1.0, dx))
+        xvals = list(gen_xvals(num_steps))
         for x in xvals:
             yield self.upper_surface(x)
         for x in reversed(xvals):
@@ -116,9 +111,8 @@ class FoilMaker:
 
     def gen_camber_coords(self) -> tp.Sequence[Coord]:
         num_steps = 20
-        dx = 1.0 / num_steps
         # Generate upper surface from 0.0 to 1.0
-        xvals = list(frange(0.0, 1.0, dx))
+        xvals = list(gen_xvals(num_steps))
         for x in xvals:
             y = self.yc(x)
             yield Coord(x=x, y=y)

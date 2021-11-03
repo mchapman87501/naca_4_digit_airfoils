@@ -5,6 +5,8 @@ import math
 import re
 import typing as tp
 
+import matplotlib.pyplot as plt
+
 
 @dataclass(frozen=True)
 class NACAFoil:
@@ -140,6 +142,21 @@ class FoilMaker:
             yield Coord(x=x, y=y)
 
 
+def _plot_envelope(title: str, points: tp.Sequence[Coord]) -> None:
+    fig = plt.figure()
+    x = [p.x for p in points]
+    y = [p.y for p in points]
+    plt.plot(x, y, "b-")
+    plt.title(title)
+    plt.axis("equal")
+
+
+def _plot_mean_chord(points: tp.Sequence[Coord]) -> None:
+    x = [p.x for p in points]
+    y = [p.y for p in points]
+    plt.plot(x, y, "k--")
+
+
 def _parse_cmdline() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate coordinates for a NACA airfoil"
@@ -163,6 +180,13 @@ def _parse_cmdline() -> argparse.Namespace:
         default=False,
         help="Also output coordinates of the mean camber line.",
     )
+    parser.add_argument(
+        "-r",
+        "--render",
+        action="store_true",
+        default=False,
+        help="Display an image of the foil envelope and mean cord line (if requested)",
+    )
 
     return parser.parse_args()
 
@@ -174,15 +198,25 @@ def main() -> None:
         print(f"# {foil_id}")
         spec = parse_id(foil_id)
         maker = FoilMaker(spec, args.num_points)
+        env = list(maker.gen_env_coordinates())
+        mean_chord = list(maker.gen_camber_coords())
         print("# Envelope")
-        for point in maker.gen_env_coordinates():
+        for point in env:
             print(f"{point.x:.4f}, {point.y:.4f}")
         print()
         if args.camber:
             print("# Mean Camber Line")
-            for point in maker.gen_camber_coords():
+            for point in mean_chord:
                 print(f"{point.x:.4f}, {point.y:.4f}")
             print()
+
+        if args.render:
+            _plot_envelope(foil_id, env)
+            if args.camber:
+                _plot_mean_chord(mean_chord)
+
+    if args.render:
+        plt.show()
 
 
 if __name__ == "__main__":

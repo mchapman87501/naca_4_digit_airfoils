@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 from dataclasses import dataclass
 import math
 import re
@@ -45,19 +46,35 @@ def gen_xvals(num_steps: int) -> tp.Sequence[float]:
 
 
 class FoilMaker:
-    def __init__(self, foil: NACAFoil) -> None:
+    """
+    FoilMaker generates (x, y) coordinates from a NACAFoil.
+    """
+
+    def __init__(self, foil: NACAFoil, num_points: int) -> None:
+        """Initialize a new instance.
+
+        Args:
+            foil (NACAFoil): the foil for which to generate coordinates
+            num_points (int): the number of points to produce
+        """
         self._foil = foil
+        self._num_points = num_points
 
     def gen_env_coordinates(self) -> tp.Sequence[Coord]:
-        num_steps = 20
+        """Generate (x, y) envelope/hull coordinates.
+
+        Yields:
+            Iterator[tp.Sequence[Coord]]: envelope (x, y) Coords
+        """
+        num_steps = self._num_points // 2
         # Generate upper surface from 0.0 to 1.0
         xvals = list(gen_xvals(num_steps))
         for x in xvals:
-            yield self.upper_surface(x)
+            yield self._upper_surface(x)
         for x in reversed(xvals):
-            yield self.lower_surface(x)
+            yield self._lower_surface(x)
 
-    def yc(self, x: float) -> float:
+    def _y_chord(self, x: float) -> float:
         foil = self._foil
         m = foil.max_camber
         p = foil.camber_pos
@@ -70,7 +87,7 @@ class FoilMaker:
             )
         raise ValueError(f"x must be in 0.0 ... 1.0")
 
-    def dyc_dx(self, x: float) -> float:
+    def _dyc_dx(self, x: float) -> float:
         foil = self._foil
         m = foil.max_camber
         p = foil.camber_pos
@@ -81,7 +98,7 @@ class FoilMaker:
             return (2.0 * m / (1.0 - p) ** 2) * (p - x)
         raise ValueError(f"x must be in 0.0 ... 1.0")
 
-    def half_thickness(self, x: float) -> float:
+    def _half_thickness(self, x: float) -> float:
         t = self._foil.thickness
         return (t / 0.2) * (
             0.2969 * x ** 0.5
@@ -91,47 +108,81 @@ class FoilMaker:
             - 0.1015 * x ** 4
         )
 
-    def upper_surface(self, x: float) -> Coord:
-        dyc_dx = self.dyc_dx(x)
+    def _upper_surface(self, x: float) -> Coord:
+        dyc_dx = self._dyc_dx(x)
         theta = math.atan(dyc_dx)
-        yt = self.half_thickness(x)
-        yc = self.yc(x)
+        yt = self._half_thickness(x)
+        yc = self._y_chord(x)
         xu = x - yt * math.sin(theta)
         yu = yc + yt * math.cos(theta)
         return Coord(x=xu, y=yu)
 
-    def lower_surface(self, x: float) -> Coord:
-        dyc_dx = self.dyc_dx(x)
+    def _lower_surface(self, x: float) -> Coord:
+        dyc_dx = self._dyc_dx(x)
         theta = math.atan(dyc_dx)
-        yt = self.half_thickness(x)
-        yc = self.yc(x)
+        yt = self._half_thickness(x)
+        yc = self._y_chord(x)
         xl = x + yt * math.sin(theta)
         yl = yc - yt * math.cos(theta)
         return Coord(x=xl, y=yl)
 
     def gen_camber_coords(self) -> tp.Sequence[Coord]:
-        num_steps = 20
+        """Generate (x, y) coordinates of the mean camber line.
+
+        Yields:
+            Iterator[tp.Sequence[Coord]]: (x, y) coords of the camber line)
+        """
+        num_steps = self._num_points
         # Generate upper surface from 0.0 to 1.0
         xvals = list(gen_xvals(num_steps))
         for x in xvals:
-            y = self.yc(x)
+            y = self._y_chord(x)
             yield Coord(x=x, y=y)
+
+
+def _parse_cmdline() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate coordinates for a NACA airfoil"
+    )
+    parser.add_argument(
+        "naca_4_digit",
+        nargs="+",
+        help="NACA 4-digit foil specifier, e.g., 'NACA2412'",
+    )
+    parser.add_argument(
+        "-p",
+        "--num-points",
+        type=int,
+        default=24,
+        help="number of coordinates to output",
+    )
+    parser.add_argument(
+        "-c",
+        "--camber",
+        action="store_true",
+        default=False,
+        help="Also output coordinates of the mean camber line.",
+    )
+
+    return parser.parse_args()
 
 
 def main() -> None:
     """Mainline for standalone execution."""
-    spec = parse_id("NACA2412")
-    print(
-        f"Max camber {spec.max_camber} occurs at {spec.camber_pos}.  Thickness is {spec.thickness}."
-    )
-    maker = FoilMaker(spec)
-    print("# Envelope")
-    for point in maker.gen_env_coordinates():
-        print(f"{point.x:.4f}, {point.y:.4f}")
-    print("")
-    print("# Camber line")
-    for point in maker.gen_camber_coords():
-        print(f"{point.x:.4f}, {point.y:.4f}")
+    args = _parse_cmdline()
+    for foil_id in args.naca_4_digit:
+        print(f"# {foil_id}")
+        spec = parse_id(foil_id)
+        maker = FoilMaker(spec, args.num_points)
+        print("# Envelope")
+        for point in maker.gen_env_coordinates():
+            print(f"{point.x:.4f}, {point.y:.4f}")
+        print()
+        if args.camber:
+            print("# Mean Camber Line")
+            for point in maker.gen_camber_coords():
+                print(f"{point.x:.4f}, {point.y:.4f}")
+            print()
 
 
 if __name__ == "__main__":

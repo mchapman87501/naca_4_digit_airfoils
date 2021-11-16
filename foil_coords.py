@@ -146,7 +146,7 @@ def _plot_envelope(title: str, points: tp.Sequence[Coord]) -> None:
     fig = plt.figure()
     x = [p.x for p in points]
     y = [p.y for p in points]
-    plt.plot(x, y, "b-")
+    plt.plot(x, y, marker="o", linestyle="-", color="b")
     plt.title(title)
     plt.axis("equal")
 
@@ -187,6 +187,13 @@ def _parse_cmdline() -> argparse.Namespace:
         default=False,
         help="Display an image of the foil envelope and mean cord line (if requested)",
     )
+    parser.add_argument(
+        "-s",
+        "--swift",
+        action="store_true",
+        default=False,
+        help="Generate coordinates as a swift code fragment."
+    )
 
     return parser.parse_args()
 
@@ -194,20 +201,38 @@ def _parse_cmdline() -> argparse.Namespace:
 def main() -> None:
     """Mainline for standalone execution."""
     args = _parse_cmdline()
+    swift_syn = args.swift
+    comment = "//" if swift_syn else "#"
     for foil_id in args.naca_4_digit:
-        print(f"# {foil_id}")
+        print(f"{comment} {foil_id}")
         spec = parse_id(foil_id)
         maker = FoilMaker(spec, args.num_points)
         env = list(maker.gen_env_coordinates())
         mean_chord = list(maker.gen_camber_coords())
-        print("# Envelope")
+        if swift_syn:
+            print("let envelope = [")
+        else:
+            print(f"# Envelope")
         for point in env:
-            print(f"{point.x:.4f}, {point.y:.4f}")
+            if swift_syn:
+                print(f"    ({point.x:.4f}, {point.y:.4f}),")
+            else:
+                print(f"{point.x:.4f}, {point.y:.4f}")
+        if swift_syn:
+            print("]")
         print()
         if args.camber:
-            print("# Mean Camber Line")
+            if swift_syn:
+                print("let camber_line = [")
+            else:
+                print("# Mean Camber Line")
             for point in mean_chord:
-                print(f"{point.x:.4f}, {point.y:.4f}")
+                if swift_syn:
+                    print(f"    ({point.x:.4f}, {point.y:.4f}),")
+                else:
+                    print(f"{point.x:.4f}, {point.y:.4f}")
+            if swift_syn:
+                print("]")
             print()
 
         if args.render:

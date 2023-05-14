@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+"""This simple script prints/plots (x, y) coordinates for NACA airfoils."""
+
 import argparse
 from dataclasses import dataclass
 import math
@@ -88,7 +90,9 @@ class FoilMaker:
         if 0.0 <= x < p:
             return (m / p_sqr) * (2.0 * p * x - x**2)
         if p <= x <= 1.0:
-            return (m / (1.0 - p) ** 2) * (1.0 - 2.0 * p + 2.0 * p * x - x**2)
+            return (m / (1.0 - p) ** 2) * (
+                1.0 - 2.0 * p + 2.0 * p * x - x**2
+            )
         raise ValueError("x must be in 0.0 ... 1.0")
 
     def _dyc_dx(self, x: float) -> float:
@@ -148,6 +152,12 @@ class CoordPrinter:
     """Print airfoil shape coordinates."""
 
     def __init__(self, swift_syntax: bool) -> None:
+        """Initialize a new instance.
+
+        Args:
+            swift_syntax (bool): Format output as Swift-lang code
+                                 (if True) or as comma-separated values
+        """
         self._swift_syntax = swift_syntax
         self._comment = "//" if swift_syntax else "#"
         coord_prefix = "    (" if self._swift_syntax else ""
@@ -157,6 +167,14 @@ class CoordPrinter:
     def print_foil(
         self, foil_id: str, envelope: CoordSeq, camber_line: CoordSeq
     ) -> None:
+        """Print coords of an airfoil envelope and its camber line (if given).
+
+        Args:
+            foil_id (str): NACA airfoil ID, e.g., 'NACA2412'
+            envelope (CoordSeq): (x, y) coords of airfoil envelope
+            camber_line (CoordSeq): (x, y) coords of foil camber line
+                                    If camber_line is empty it is not printed.
+        """
         print(self._comment, foil_id)
         self._print_envelope(envelope)
         if camber_line:
@@ -191,7 +209,19 @@ class CoordPrinter:
 
 
 class Plotter:
-    def plot(self, foil_id: str, envelope: CoordSeq, camber_line: CoordSeq) -> None:
+    """Plots foil shapes using matplotlib."""
+
+    def plot(
+        self, foil_id: str, envelope: CoordSeq, camber_line: CoordSeq
+    ) -> None:
+        """Plot an airfoil envelope and camber line (if given).
+
+        Args:
+            foil_id (str): NACA airfoil ID, e.g., 'NACA2412'
+            envelope (CoordSeq): (x, y) coords of airfoil envelope
+            camber_line (CoordSeq): (x, y) coords of foil camber line
+                                    If camber_line is empty it is not plotted.
+        """
         _ = plt.figure()
         plt.title(foil_id)
         plt.axis("equal")
@@ -213,7 +243,7 @@ class Plotter:
 
 def _parse_cmdline() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate coordinates for a NACA airfoil"
+        description="Generate coordinates for NACA airfoils."
     )
     parser.add_argument(
         "naca_4_digit",
@@ -241,7 +271,7 @@ def _parse_cmdline() -> argparse.Namespace:
         default=False,
         help=(
             "Display an image of the foil envelope "
-            "and mean camber line (if requested)"
+            "(and mean camber line, if requested)."
         ),
     )
     parser.add_argument(
@@ -249,7 +279,7 @@ def _parse_cmdline() -> argparse.Namespace:
         "--swift",
         action="store_true",
         default=False,
-        help="Generate coordinates as a swift code fragment.",
+        help="Print coordinates as a Swift-lang code fragment.",
     )
 
     return parser.parse_args()

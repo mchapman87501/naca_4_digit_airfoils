@@ -1,0 +1,6 @@
+# This is just a quick-and-dirty script.  It isn't designed to be
+# installed as a Python package.
+
+[tool.black]
+line-length=79
+

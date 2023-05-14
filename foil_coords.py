@@ -38,7 +38,11 @@ class Coord:
     y: float
 
 
-def gen_xvals(num_steps: int) -> tp.Sequence[float]:
+CoordIter = tp.Iterable[Coord]
+CoordSeq = tp.Sequence[Coord]
+
+
+def gen_xvals(num_steps: int) -> tp.Iterable[float]:
     # Reduce flat segments near leading edge:
     beta = 0.0
     d_beta = math.pi / num_steps
@@ -62,7 +66,7 @@ class FoilMaker:
         self._foil = foil
         self._num_points = num_points
 
-    def gen_env_coordinates(self) -> tp.Sequence[Coord]:
+    def gen_env_coordinates(self) -> CoordIter:
         """Generate (x, y) envelope/hull coordinates.
 
         Yields:
@@ -82,12 +86,10 @@ class FoilMaker:
         p = foil.camber_pos
         p_sqr = p * p
         if 0.0 <= x < p:
-            return (m / p_sqr) * (2.0 * p * x - x ** 2)
+            return (m / p_sqr) * (2.0 * p * x - x**2)
         if p <= x <= 1.0:
-            return (m / (1.0 - p) ** 2) * (
-                1.0 - 2.0 * p + 2.0 * p * x - x ** 2
-            )
-        raise ValueError(f"x must be in 0.0 ... 1.0")
+            return (m / (1.0 - p) ** 2) * (1.0 - 2.0 * p + 2.0 * p * x - x**2)
+        raise ValueError("x must be in 0.0 ... 1.0")
 
     def _dyc_dx(self, x: float) -> float:
         foil = self._foil
@@ -98,16 +100,16 @@ class FoilMaker:
             return (2.0 * m / p_sqr) * (p - x)
         if p <= x <= 1.0:
             return (2.0 * m / (1.0 - p) ** 2) * (p - x)
-        raise ValueError(f"x must be in 0.0 ... 1.0")
+        raise ValueError("x must be in 0.0 ... 1.0")
 
     def _half_thickness(self, x: float) -> float:
         t = self._foil.thickness
         return (t / 0.2) * (
-            0.2969 * x ** 0.5
+            0.2969 * x**0.5
             - 0.126 * x
-            - 0.3516 * x ** 2
-            + 0.2843 * x ** 3
-            - 0.1015 * x ** 4
+            - 0.3516 * x**2
+            + 0.2843 * x**3
+            - 0.1015 * x**4
         )
 
     def _upper_surface(self, x: float) -> Coord:
@@ -128,7 +130,7 @@ class FoilMaker:
         yl = yc - yt * math.cos(theta)
         return Coord(x=xl, y=yl)
 
-    def gen_camber_coords(self) -> tp.Sequence[Coord]:
+    def gen_camber_coords(self) -> CoordIter:
         """Generate (x, y) coordinates of the mean camber line.
 
         Yields:
@@ -142,19 +144,71 @@ class FoilMaker:
             yield Coord(x=x, y=y)
 
 
-def _plot_envelope(title: str, points: tp.Sequence[Coord]) -> None:
-    fig = plt.figure()
-    x = [p.x for p in points]
-    y = [p.y for p in points]
-    plt.plot(x, y, marker="o", linestyle="-", color="b")
-    plt.title(title)
-    plt.axis("equal")
+class CoordPrinter:
+    """Print airfoil shape coordinates."""
+
+    def __init__(self, swift_syntax: bool) -> None:
+        self._swift_syntax = swift_syntax
+        self._comment = "//" if swift_syntax else "#"
+        coord_prefix = "    (" if self._swift_syntax else ""
+        coord_suffix = ")," if self._swift_syntax else ""
+        self._item_fmt = f"{coord_prefix}{{x:.4f}}, {{y:.4f}}{coord_suffix}"
+
+    def print_foil(
+        self, foil_id: str, envelope: CoordSeq, camber_line: CoordSeq
+    ) -> None:
+        print(self._comment, foil_id)
+        self._print_envelope(envelope)
+        if camber_line:
+            self._print_camber(camber_line)
+
+    def _print_envelope(self, envelope: CoordIter) -> None:
+        if self._swift_syntax:
+            print("let envelope = [")
+        else:
+            print("# Envelope")
+
+        fmt = self._item_fmt
+        for point in envelope:
+            print(fmt.format(x=point.x, y=point.y))
+
+        if self._swift_syntax:
+            print("]")
+        print()
+
+    def _print_camber(self, camber_line: CoordIter) -> None:
+        if self._swift_syntax:
+            print("let camber_line = [")
+        else:
+            print("# Mean Camber Line")
+
+        fmt = self._item_fmt
+        for point in camber_line:
+            print(fmt.format(x=point.x, y=point.y))
+        if self._swift_syntax:
+            print("]")
+        print()
 
 
-def _plot_mean_chord(points: tp.Sequence[Coord]) -> None:
-    x = [p.x for p in points]
-    y = [p.y for p in points]
-    plt.plot(x, y, "k--")
+class Plotter:
+    def plot(self, foil_id: str, envelope: CoordSeq, camber_line: CoordSeq) -> None:
+        _ = plt.figure()
+        plt.title(foil_id)
+        plt.axis("equal")
+
+        self._plot_envelope(envelope)
+        if camber_line:
+            self._plot_camber(camber_line)
+
+    def _plot_envelope(self, envelope: CoordSeq) -> None:
+        x = [p.x for p in envelope]
+        y = [p.y for p in envelope]
+        plt.plot(x, y, marker="o", linestyle="-", color="b")
+
+    def _plot_camber(self, camber_line: CoordSeq) -> None:
+        x = [p.x for p in camber_line]
+        y = [p.y for p in camber_line]
+        plt.plot(x, y, "k--")
 
 
 def _parse_cmdline() -> argparse.Namespace:
@@ -185,14 +239,17 @@ def _parse_cmdline() -> argparse.Namespace:
         "--render",
         action="store_true",
         default=False,
-        help="Display an image of the foil envelope and mean cord line (if requested)",
+        help=(
+            "Display an image of the foil envelope "
+            "and mean camber line (if requested)"
+        ),
     )
     parser.add_argument(
         "-s",
         "--swift",
         action="store_true",
         default=False,
-        help="Generate coordinates as a swift code fragment."
+        help="Generate coordinates as a swift code fragment.",
     )
 
     return parser.parse_args()
@@ -201,44 +258,20 @@ def _parse_cmdline() -> argparse.Namespace:
 def main() -> None:
     """Mainline for standalone execution."""
     args = _parse_cmdline()
-    swift_syn = args.swift
-    comment = "//" if swift_syn else "#"
+
+    printer = CoordPrinter(args.swift)
+    plotter = Plotter()
+
     for foil_id in args.naca_4_digit:
-        print(f"{comment} {foil_id}")
         spec = parse_id(foil_id)
         maker = FoilMaker(spec, args.num_points)
+
         env = list(maker.gen_env_coordinates())
-        mean_chord = list(maker.gen_camber_coords())
-        if swift_syn:
-            print("let envelope = [")
-        else:
-            print(f"# Envelope")
-        for point in env:
-            if swift_syn:
-                print(f"    ({point.x:.4f}, {point.y:.4f}),")
-            else:
-                print(f"{point.x:.4f}, {point.y:.4f}")
-        if swift_syn:
-            print("]")
-        print()
-        if args.camber:
-            if swift_syn:
-                print("let camber_line = [")
-            else:
-                print("# Mean Camber Line")
-            for point in mean_chord:
-                if swift_syn:
-                    print(f"    ({point.x:.4f}, {point.y:.4f}),")
-                else:
-                    print(f"{point.x:.4f}, {point.y:.4f}")
-            if swift_syn:
-                print("]")
-            print()
+        camber = [] if not args.camber else list(maker.gen_camber_coords())
+        printer.print_foil(foil_id, env, camber)
 
         if args.render:
-            _plot_envelope(foil_id, env)
-            if args.camber:
-                _plot_mean_chord(mean_chord)
+            plotter.plot(foil_id, env, camber)
 
     if args.render:
         plt.show()
